@@ -7,7 +7,7 @@
         xmlns:custom="clr-namespace:ImageToExcel.CustomControl"
         mc:Ignorable="d"
         Title="图片转EXCEL小程序" Height="350" Width="525" Closed="Window_Closed">
-    <Grid Background="#FFEFEFEF">
+    <Grid>
         <DockPanel>
             <Border x:Name="TopContentArea" BorderBrush="#FFC5C5C5" BorderThickness="0,0,0,1" Padding="8" DockPanel.Dock="Top">
                 <DockPanel>
