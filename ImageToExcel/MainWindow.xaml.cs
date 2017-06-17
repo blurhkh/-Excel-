@@ -90,7 +90,7 @@ namespace ImageToExcel
                 sw.Start();
                 int width = bmp.Width;
                 int height = bmp.Height;
-                string excelPath = $@"{Path.GetDirectoryName(url)}\{Path.GetFileNameWithoutExtension(url)}.xlsx";
+                string excelPath = Path.Combine(Path.GetDirectoryName(url), Path.GetFileNameWithoutExtension(url) + ".xlsx");
 
                 excelApp = new Microsoft.Office.Interop.Excel.Application();
                 workbooks = excelApp.Workbooks;
