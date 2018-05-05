@@ -1,186 +1,167 @@
-﻿using Microsoft.Win32;
-using System;
-using System.IO;
-using System.Windows;
-using System.Drawing;
-using Microsoft.Office.Interop.Excel;
-using System.Threading;
+﻿using System;
 using System.Diagnostics;
-using System.Windows.Threading;
+using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Media.Imaging;
+using Microsoft.Office.Interop.Excel;
+using Microsoft.Win32;
+using Application = Microsoft.Office.Interop.Excel.Application;
+using Window = System.Windows.Window;
 
 namespace ImageToExcel
 {
     /// <summary>
-    /// MainWindow.xaml 的交互逻辑
+    ///     MainWindow.xaml 的交互逻辑
     /// </summary>
-    public partial class MainWindow : System.Windows.Window
+    public partial class MainWindow : Window
     {
         /// <summary>
-        /// EXCEL主程序
+        ///     EXCEL主程序
         /// </summary>
-        Microsoft.Office.Interop.Excel.Application excelApp;
+        private Application excelApp;
 
         /// <summary>
-        /// 工作簿
+        ///     工作簿
         /// </summary>
-        Workbooks workbooks;
+        private Workbooks workbooks;
 
-        /// <summary>
-        /// 用于转换图片的线程
-        /// </summary>
-        Thread th;
-
-        [DllImport("User32.dll", CharSet = CharSet.Auto)]
-        private static extern int GetWindowThreadProcessId(IntPtr hwnd, out int ID);
         public MainWindow()
         {
             InitializeComponent();
-
         }
 
-        private void btnBrowse_Click(object sender, RoutedEventArgs e)
+        [DllImport("User32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetWindowThreadProcessId(IntPtr hwnd, out int ID);
+
+        private async void btnBrowse_Click(object sender, RoutedEventArgs e)
         {
             // 清空之前的数据
-            this.lblMessage.Content = string.Empty;
-            this.lblUrl.Content = string.Empty;
-            this.imgPreview.Source = null;
+            lblMessage.Content = string.Empty;
+            lblUrl.Content = string.Empty;
+            imgPreview.Source = null;
             // 打开图片
-            OpenFileDialog fileDialog = new OpenFileDialog() { Filter = "图片文件 (*.jpg)|*.jpg" };
+            var fileDialog = new OpenFileDialog { Filter = "图片文件 (*.jpg)|*.jpg" };
             fileDialog.Title = "请选择图片";
             fileDialog.ShowDialog();
-            this.lblUrl.Content = fileDialog.FileName;
+            lblUrl.Content = fileDialog.FileName;
 
-            if (string.IsNullOrEmpty(this.lblUrl.Content.ToString()))
-            {
-                return;
-            }
+            if (string.IsNullOrEmpty(lblUrl.Content.ToString())) return;
 
-            this.imgPreview.Source = this.ReadPicture(fileDialog.FileName);
+            imgPreview.Source = ReadPicture(fileDialog.FileName);
 
             // 创建用于转换图片的线程
-            this.th = new Thread(Convert);
-            this.btnBrowse.IsEnabled = false;
-            this.gifLoading.StartAnimate();
-            this.th.Start();
+            btnBrowse.IsEnabled = false;
+            gifLoading.StartAnimate();
+            await ConvertAsync();
         }
 
         private void Window_Closed(object sender, EventArgs e)
         {
-            this.th?.Abort();
-            this.CloseExcel();
+            CloseExcel();
         }
 
         /// <summary>
-        /// 将图片转换成EXCEL
+        ///     将图片转换成EXCEL
         /// </summary>
-        private void Convert()
+        private async Task ConvertAsync()
         {
-            string url = null;
-            Dispatcher.Invoke(() =>
+            await Task.Run(() =>
             {
-                this.lblMessage.Content = "转换开始";
-                url = this.lblUrl.Content.ToString();
-            });
-            Bitmap bmp = new Bitmap(url);
-            try
-            {
-                Stopwatch sw = new Stopwatch();
-                sw.Start();
-                int width = bmp.Width;
-                int height = bmp.Height;
-                string excelPath = Path.Combine(Path.GetDirectoryName(url), Path.GetFileNameWithoutExtension(url) + ".xlsx");
-
-                excelApp = new Microsoft.Office.Interop.Excel.Application();
-                workbooks = excelApp.Workbooks;
-                // 创建工作簿
-                Workbook workbook = workbooks.Add(true);
-                // 创建工作表
-                Worksheet worksheet = workbook.Worksheets[1] as Worksheet;
-
-                // Excel可视化
-                excelApp.Visible = true;
-
-                // 设置宽度和高度
-                worksheet.Cells.RowHeight = 7.5;
-                worksheet.Cells.ColumnWidth = 0.77;
-
-                for (int rowIndex = 0; rowIndex < height; rowIndex++)
-                {
-                    for (int colIndex = 0; colIndex < width; colIndex++)
-                    {
-                        Color color = bmp.GetPixel(colIndex, rowIndex);
-                        Range range = (Range)worksheet.Cells[rowIndex + 1, colIndex + 1];
-                        // 需要将C#的颜色转成EXCEL的颜色
-                        range.Interior.Color = Color.FromArgb(color.A, color.B, color.G, color.R).ToArgb();
-                    }
-                }
-
-                workbook.SaveAs(excelPath);
-
-                sw.Stop();
-                TimeSpan ts = sw.Elapsed;
+                string url = null;
                 Dispatcher.Invoke(() =>
                 {
-                    this.lblMessage.Content = $"转换完成,耗时{ts.Hours}时{ts.Minutes}分{ts.Seconds}秒";
+                    lblMessage.Content = "转换开始";
+                    url = lblUrl.Content.ToString();
                 });
-            }
-            catch
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    this.lblMessage.Content = "转换失败";
-                });
-            }
-            finally
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    this.gifLoading.StopAnimate();
-                    this.btnBrowse.IsEnabled = true;
-                });
-                // 释放图片占用资源
-                bmp.Dispose();
-                // 关闭EXCEL资源
-                this.CloseExcel();
-                // 关闭线程
-                this.th.Abort();
-            }
-        }
-
-        /// <summary>
-        /// 关闭EXCEL
-        /// </summary>
-        private void CloseExcel()
-        {
-            if (excelApp != null)
-            {
+                var bmp = new Bitmap(url);
                 try
                 {
-                    // 关闭Excel进程
-                    IntPtr hwnd = new IntPtr(excelApp.Hwnd);
-                    int processId = 0;
-                    GetWindowThreadProcessId(hwnd, out processId);
-                    System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(processId);
-                    process.Kill();
+                    var sw = new Stopwatch();
+                    sw.Start();
+                    var width = bmp.Width;
+                    var height = bmp.Height;
+                    var excelPath = Path.Combine(Path.GetDirectoryName(url),
+                        Path.GetFileNameWithoutExtension(url) + ".xlsx");
+
+                    excelApp = new Application();
+                    workbooks = excelApp.Workbooks;
+                    // 创建工作簿
+                    var workbook = workbooks.Add(true);
+                    // 创建工作表
+                    var worksheet = workbook.Worksheets[1] as Worksheet;
+
+                    // Excel可视化
+                    excelApp.Visible = true;
+
+                    // 设置宽度和高度
+                    worksheet.Cells.RowHeight = 7.5;
+                    worksheet.Cells.ColumnWidth = 0.77;
+
+                    for (var rowIndex = 0; rowIndex < height; rowIndex++)
+                        for (var colIndex = 0; colIndex < width; colIndex++)
+                        {
+                            var color = bmp.GetPixel(colIndex, rowIndex);
+                            var range = (Range)worksheet.Cells[rowIndex + 1, colIndex + 1];
+                            // 需要将C#的颜色转成EXCEL的颜色
+                            range.Interior.Color = Color.FromArgb(color.A, color.B, color.G, color.R).ToArgb();
+                        }
+
+                    workbook.SaveAs(excelPath);
+
+                    sw.Stop();
+                    var ts = sw.Elapsed;
+                    Dispatcher.Invoke(() => { lblMessage.Content = $"转换完成,耗时{ts.Hours}时{ts.Minutes}分{ts.Seconds}秒"; });
                 }
                 catch
                 {
-
+                    Dispatcher.Invoke(() => { lblMessage.Content = "转换失败"; });
                 }
-            }
-
+                finally
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        gifLoading.StopAnimate();
+                        btnBrowse.IsEnabled = true;
+                    });
+                    // 释放图片占用资源
+                    bmp.Dispose();
+                    // 关闭EXCEL资源
+                    CloseExcel();
+                }
+            });
         }
 
         /// <summary>
-        /// 读取图片并释放资源
+        ///     关闭EXCEL
+        /// </summary>
+        private void CloseExcel()
+        {
+            if (excelApp == null) return;
+            try
+            {
+                // 关闭Excel进程
+                var hwnd = new IntPtr(excelApp.Hwnd);
+                GetWindowThreadProcessId(hwnd, out var processId);
+                var process = Process.GetProcessById(processId);
+                process.Kill();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        /// <summary>
+        ///     读取图片并释放资源
         /// </summary>
         /// <param name="path">图片路径</param>
         /// <returns></returns>
         private BitmapImage ReadPicture(string path)
         {
-            BitmapImage bitmap = new BitmapImage();
+            var bitmap = new BitmapImage();
 
             if (File.Exists(path))
             {
